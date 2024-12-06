@@ -56,6 +56,7 @@ func TestCreateUser(t *testing.T) {
 		}
 		w.Write(rawResponse)
 	}))
+	defer server.Close()
 
 	client, err := New(server.URL, token)
 	if err != nil {
@@ -87,7 +88,7 @@ func TestGetUser(t *testing.T) {
 		}
 
 		if r.Method != http.MethodGet {
-			t.Errorf("CreateUser should GET. It uses %q", r.Method)
+			t.Errorf("GetUser should GET. It uses %q", r.Method)
 		}
 
 		w.WriteHeader(http.StatusOK)
@@ -104,6 +105,7 @@ func TestGetUser(t *testing.T) {
 		w.Write(rawResponse)
 
 	}))
+	defer server.Close()
 
 	client, err := New(server.URL, token)
 	if err != nil {
@@ -120,11 +122,12 @@ func TestGetUser(t *testing.T) {
 	}
 }
 
-func TestListUsersError(t *testing.T) {
+func TestApiError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"code":"CODE_SYSTEM_ERROR","msg":"An error occurred on the server's end."}`))
 	}))
+	defer server.Close()
 
 	client, err := New(server.URL, token)
 	if err != nil {
@@ -137,6 +140,39 @@ func TestListUsersError(t *testing.T) {
 	}
 }
 
+func TestMalformedJson(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`Not valid json`))
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+
+	_, err = client.ListUsers()
+	if err == nil {
+		t.Errorf("Expected malformed JSON. Call succeeded")
+	}
+}
+
+func TestDeadServer(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+	server.Close()
+
+	_, err = client.ListUsers()
+	if err == nil {
+		t.Errorf("Expected request to fail. Call succeeded")
+	}
+}
+
 func TestListUsers(t *testing.T) {
 	expectedPath := "/api/v1/developer/users"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +181,7 @@ func TestListUsers(t *testing.T) {
 		}
 
 		if r.Method != http.MethodGet {
-			t.Errorf("CreateUser should GET. It uses %q", r.Method)
+			t.Errorf("ListUsers should GET. It uses %q", r.Method)
 		}
 
 		rawResponse, err := json.Marshal(schema.Response[[]schema.UserResponse]{
@@ -160,6 +196,7 @@ func TestListUsers(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(rawResponse)
 	}))
+	defer server.Close()
 
 	client, err := New(server.URL, token)
 	if err != nil {
@@ -173,5 +210,42 @@ func TestListUsers(t *testing.T) {
 
 	if len(users) != 1 {
 		t.Errorf("Expected 1 user, got %d", len(users))
+	}
+}
+
+func TestUpdateUser(t *testing.T) {
+	expectedPath := fmt.Sprintf("/api/v1/developer/users/%s", expectedId)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
+		}
+
+		if r.Method != http.MethodPut {
+			t.Errorf("UpdateUser should PUT. It uses %q", r.Method)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		rawResponse, err := json.Marshal(schema.Response[schema.UserResponse]{
+			Code: schema.ResponseSuccess,
+			Msg:  "success",
+			Data: schema.UserResponse{
+				Id: expectedId,
+			},
+		})
+		if err != nil {
+			t.Errorf("Error marshaling mock response: %v", err)
+		}
+		w.Write(rawResponse)
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+
+	if err = client.UpdateUser(expectedId, schema.UserRequest{}); err != nil {
+		t.Errorf("Unexpected error calling GetUser: %v", err)
 	}
 }
