@@ -51,18 +51,18 @@ func NewWithHttpClient(host string, token string, httpClient HttpClient) (*Clien
 	}, nil
 }
 
-func (c *Client) CreateUser(u schema.UserRequest) (schema.UserResponse, error) {
+func (c *Client) CreateUser(u schema.UserRequest) (*schema.UserResponse, error) {
 	url := "/api/v1/developer/users"
 	buffer := bytes.NewBuffer(make([]byte, 0))
 	d := json.NewEncoder(buffer)
 	if err := d.Encode(&u); err != nil {
-		return schema.UserResponse{}, err
+		return nil, err
 	}
 	req := c.buildRequest(http.MethodPost, url, "", io.NopCloser(buffer))
 	return doRequest[schema.UserResponse](c, req)
 }
 
-func (c *Client) GetUser(id string) (schema.UserResponse, error) {
+func (c *Client) GetUser(id string) (*schema.UserResponse, error) {
 	url := "/api/v1/developer/users/" + id
 	req := c.buildRequest(http.MethodGet, url, "", nil)
 	return doRequest[schema.UserResponse](c, req)
@@ -85,7 +85,11 @@ func (c *Client) UpdateUser(id string, u schema.UserRequest) error {
 func (c *Client) ListUsers() ([]schema.UserResponse, error) {
 	url := "/api/v1/developer/users"
 	req := c.buildRequest(http.MethodGet, url, "", nil)
-	return doRequest[[]schema.UserResponse](c, req)
+	listPtr, err := doRequest[[]schema.UserResponse](c, req)
+	if listPtr != nil {
+		return *listPtr, err
+	}
+	return nil, err
 }
 
 func (c *Client) buildRequest(method string, path string, rawQuery string, body io.ReadCloser) *http.Request {
@@ -101,24 +105,23 @@ func (c *Client) buildRequest(method string, path string, rawQuery string, body 
 	}
 }
 
-func doRequest[T any](c *Client, req *http.Request) (T, error) {
-	var zero T
+func doRequest[T any](c *Client, req *http.Request) (*T, error) {
 	rawresp, err := c.httpClient.Do(req)
 	if err != nil {
-		return zero, err
+		return nil, err
 	}
 	defer rawresp.Body.Close()
 
 	resp, err := parseResponse[T](rawresp.Body)
 	if err != nil {
-		return zero, err
+		return nil, err
 	}
 
 	if resp.Code != schema.ResponseSuccess {
-		return zero, errors.New(resp.Code + ": " + resp.Msg)
+		return nil, errors.New(resp.Code + ": " + resp.Msg)
 	}
 
-	return resp.Data, nil
+	return &resp.Data, nil
 
 }
 

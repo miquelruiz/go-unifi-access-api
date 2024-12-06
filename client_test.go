@@ -35,6 +35,14 @@ func TestCreateUser(t *testing.T) {
 			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
 		}
 
+		if r.Method != http.MethodPost {
+			t.Errorf("CreateUser should POST. It uses %q", r.Method)
+		}
+
+		if r.Header.Get("Authorization") != fmt.Sprintf("Bearer "+token) {
+			t.Errorf("Wrong authoriztion header: %s", r.Header.Get("Authorization"))
+		}
+
 		w.WriteHeader(http.StatusOK)
 		rawResponse, err := json.Marshal(schema.Response[schema.UserResponse]{
 			Code: schema.ResponseSuccess,
@@ -78,6 +86,10 @@ func TestGetUser(t *testing.T) {
 			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
 		}
 
+		if r.Method != http.MethodGet {
+			t.Errorf("CreateUser should GET. It uses %q", r.Method)
+		}
+
 		w.WriteHeader(http.StatusOK)
 		rawResponse, err := json.Marshal(schema.Response[schema.UserResponse]{
 			Code: schema.ResponseSuccess,
@@ -105,5 +117,61 @@ func TestGetUser(t *testing.T) {
 
 	if user.Id != expectedId {
 		t.Errorf("Unexpected Id from GetUser: %s. Expected: %s", user.Id, expectedId)
+	}
+}
+
+func TestListUsersError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"code":"CODE_SYSTEM_ERROR","msg":"An error occurred on the server's end."}`))
+	}))
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+
+	_, err = client.ListUsers()
+	if err == nil {
+		t.Errorf("Error expected calling ListUsers. Call succeeded")
+	}
+}
+
+func TestListUsers(t *testing.T) {
+	expectedPath := "/api/v1/developer/users"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
+		}
+
+		if r.Method != http.MethodGet {
+			t.Errorf("CreateUser should GET. It uses %q", r.Method)
+		}
+
+		rawResponse, err := json.Marshal(schema.Response[[]schema.UserResponse]{
+			Code: schema.ResponseSuccess,
+			Msg:  "success",
+			Data: []schema.UserResponse{{}},
+		})
+		if err != nil {
+			t.Errorf("Unexpected error marshaling response: %v", err)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		w.Write(rawResponse)
+	}))
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+
+	users, err := client.ListUsers()
+	if err != nil {
+		t.Errorf("Unexpected error calling ListUsers: %v", err)
+	}
+
+	if len(users) != 1 {
+		t.Errorf("Expected 1 user, got %d", len(users))
 	}
 }
