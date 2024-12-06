@@ -1,48 +1,109 @@
 package unifiaccessclient
 
 import (
-	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/miquelruiz/go-unifi-access-api/schema"
 )
 
-func TestXX(t *testing.T) {
-	client := NewWithHttpClient(
-		"192.168.1.1",
-		12445,
-		"",
-		&http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+var (
+	token          = "some-auth-token"
+	firstName      = "FirstName"
+	lastName       = "LastName"
+	employeeNumber = "123"
+	email          = "useremail@example.com"
+	onboardTime    = int(time.Now().Unix())
+	expectedId     = "9876"
+)
+
+func TestFailedNew(t *testing.T) {
+	_, err := New(":some@nasty/malformed\\stuff", token)
+	if err == nil {
+		t.Errorf("Error was expected, constructor didn't fail")
+	}
+}
+
+func TestCreateUser(t *testing.T) {
+	expectedPath := "/api/v1/developer/users"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		rawResponse, err := json.Marshal(schema.Response[schema.UserResponse]{
+			Code: schema.ResponseSuccess,
+			Msg:  "success",
+			Data: schema.UserResponse{
+				Id: expectedId,
 			},
-		},
-	)
+		})
+		if err != nil {
+			t.Errorf("Error marshaling mock response: %v", err)
+		}
+		w.Write(rawResponse)
+	}))
 
-	// new, err := client.CreateUser(schema.UserRequest{FirstName: "Perico", LastName: "Palotes"})
-	// if err != nil {
-	// 	t.Error(err)
-	// }
-	// fmt.Printf("%s %s\n", new.FirstName, new.LastName)
-
-	users, err := client.ListUsers()
+	client, err := New(server.URL, token)
 	if err != nil {
-		t.Error(err)
+		t.Errorf("Unexpected error building client: %v", err)
 	}
 
-	for _, u := range users {
-		fmt.Printf("%s %s %s %s\n", u.Id, u.FirstName, u.LastName, u.Status)
+	resp, err := client.CreateUser(schema.UserRequest{
+		FirstName:      firstName,
+		LastName:       lastName,
+		UserEmail:      &email,
+		EmployeeNumber: &employeeNumber,
+		OnboardTime:    &onboardTime,
+	})
+	if err != nil {
+		t.Errorf("Unexpected failure calling CreateUser: %v", err)
 	}
 
-	// u, err := client.GetUser("63f654b9-9d11-4a92-9d18-cc536b74d9e8")
-	// if err != nil {
-	// 	t.Error(err)
-	// }
-	// fmt.Println(u.FirstName)
+	if resp.Id != expectedId {
+		t.Errorf("Unexpected ID received: %s. Expected: %s", resp.Id, expectedId)
+	}
+}
 
-	// status := schema.StatusDeactivated
-	// err = client.UpdateUser("9258da27-16e6-48a1-a629-788cd529ae42", schema.UserRequest{Status: &status})
-	// if err != nil {
-	// 	t.Error(err)
-	// }
+func TestGetUser(t *testing.T) {
+	expectedPath := fmt.Sprintf("/api/v1/developer/users/%s", expectedId)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != expectedPath {
+			t.Errorf("Unexpected path called: %s. Expected: %s", r.URL.Path, expectedPath)
+		}
+
+		w.WriteHeader(http.StatusOK)
+		rawResponse, err := json.Marshal(schema.Response[schema.UserResponse]{
+			Code: schema.ResponseSuccess,
+			Msg:  "success",
+			Data: schema.UserResponse{
+				Id: expectedId,
+			},
+		})
+		if err != nil {
+			t.Errorf("Error marshaling mock response: %v", err)
+		}
+		w.Write(rawResponse)
+
+	}))
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error creating client: %v", err)
+	}
+
+	user, err := client.GetUser(expectedId)
+	if err != nil {
+		t.Errorf("Unexpected error calling GetUser: %v", err)
+	}
+
+	if user.Id != expectedId {
+		t.Errorf("Unexpected Id from GetUser: %s. Expected: %s", user.Id, expectedId)
+	}
 }

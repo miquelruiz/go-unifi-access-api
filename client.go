@@ -12,29 +12,43 @@ import (
 	"github.com/miquelruiz/go-unifi-access-api/schema"
 )
 
-type Client struct {
-	host       string
-	port       uint16
-	token      string
-	httpClient *http.Client
+type HttpClient interface {
+	Do(*http.Request) (*http.Response, error)
 }
 
-func New(host string, port uint16, token string) *Client {
+type Client struct {
+	token      string
+	baseUrl    url.URL
+	httpClient HttpClient
+}
+
+// New creates a new API client that will send requests to host using token for
+// authentication.
+//
+// A default [http.Client] will be created and used. Use [NewWithHttpClient] to
+// provide a custom [http.Client].
+//
+// An error will be returned if host can't be parsed by [url.Parse].
+func New(host string, token string) (*Client, error) {
 	return NewWithHttpClient(
 		host,
-		port,
 		token,
 		&http.Client{},
 	)
 }
 
-func NewWithHttpClient(host string, port uint16, token string, httpClient *http.Client) *Client {
-	return &Client{
-		host:       host,
-		port:       port,
-		token:      token,
-		httpClient: httpClient,
+// NewWithHttpClient is the same than [New] but accepts a custom HttpClient
+func NewWithHttpClient(host string, token string, httpClient HttpClient) (*Client, error) {
+	baseUrl, err := url.Parse(host)
+	if err != nil {
+		return nil, err
 	}
+
+	return &Client{
+		token:      token,
+		baseUrl:    *baseUrl,
+		httpClient: httpClient,
+	}, nil
 }
 
 func (c *Client) CreateUser(u schema.UserRequest) (schema.UserResponse, error) {
@@ -75,14 +89,13 @@ func (c *Client) ListUsers() ([]schema.UserResponse, error) {
 }
 
 func (c *Client) buildRequest(method string, path string, rawQuery string, body io.ReadCloser) *http.Request {
+	baseCopy := c.baseUrl
+	baseCopy.Path = path
+	baseCopy.RawQuery = rawQuery
+
 	return &http.Request{
 		Method: method,
-		URL: &url.URL{
-			Scheme:   "https",
-			Host:     c.host + ":" + fmt.Sprintf("%d", c.port),
-			Path:     path,
-			RawQuery: rawQuery,
-		},
+		URL:    &baseCopy,
 		Header: map[string][]string{"Authorization": {"Bearer " + c.token}},
 		Body:   body,
 	}
