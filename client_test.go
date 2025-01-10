@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,6 +26,27 @@ func TestFailedNew(t *testing.T) {
 	_, err := New(":some@nasty/malformed\\stuff", token)
 	if err == nil {
 		t.Errorf("Error was expected, constructor didn't fail")
+	}
+}
+
+func TestReturnNonOK(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+
+	client, err := New(server.URL, token)
+	if err != nil {
+		t.Errorf("Unexpected error building client: %v", err)
+	}
+
+	_, err = client.ListUsers()
+	if err == nil {
+		t.Errorf("Expected error when server returns unsuccessful response")
+	}
+
+	if !strings.Contains(err.Error(), fmt.Sprintf("%d", http.StatusUnauthorized)) {
+		t.Errorf("Error returned doesn't contain the status code")
 	}
 }
 

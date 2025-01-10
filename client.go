@@ -86,10 +86,10 @@ func (c *Client) ListUsers() ([]schema.UserResponse, error) {
 	url := "/api/v1/developer/users"
 	req := c.buildRequest(http.MethodGet, url, "", nil)
 	listPtr, err := doRequest[[]schema.UserResponse](c, req)
-	if listPtr != nil {
-		return *listPtr, err
+	if err != nil {
+		return nil, err
 	}
-	return nil, err
+	return *listPtr, nil
 }
 
 func (c *Client) buildRequest(method string, path string, rawQuery string, body io.ReadCloser) *http.Request {
@@ -112,6 +112,10 @@ func doRequest[T any](c *Client, req *http.Request) (*T, error) {
 	}
 	defer rawresp.Body.Close()
 
+	if rawresp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("endpoint returned %s", rawresp.Status)
+	}
+
 	resp, err := parseResponse[T](rawresp.Body)
 	if err != nil {
 		return nil, err
@@ -122,7 +126,6 @@ func doRequest[T any](c *Client, req *http.Request) (*T, error) {
 	}
 
 	return &resp.Data, nil
-
 }
 
 func parseResponse[T any](r io.Reader) (*schema.Response[T], error) {
