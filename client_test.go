@@ -61,7 +61,7 @@ func TestCreateUser(t *testing.T) {
 			t.Errorf("CreateUser should POST. It uses %q", r.Method)
 		}
 
-		if r.Header.Get("Authorization") != fmt.Sprintf("Bearer "+token) {
+		if r.Header.Get("Authorization") != "Bearer "+token {
 			t.Errorf("Wrong authoriztion header: %s", r.Header.Get("Authorization"))
 		}
 
